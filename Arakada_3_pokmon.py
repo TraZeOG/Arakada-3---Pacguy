@@ -1,6 +1,7 @@
 import pygame
 import pickle
 import random
+import heapq
 from os import path
 
 pygame.init()
@@ -79,6 +80,9 @@ datas = pickle.load(pickle_in)
 #factory settings::: ---------------------------
 #datas = 0
 
+def new_grid(grid):
+    return [[0 if cell != 1 else cell for cell in row] for row in grid]
+
 def save():
     pickle_out = open('data/data_main', 'wb')
     datas = high_score
@@ -87,20 +91,79 @@ def save():
     pygame.time.delay(180)
 
 def reset_level(level):
+    global world_data
     player.reset(screen_width // 2, screen_height - 200)
     ghost_group.empty()
     coin_group.empty()
     bloc_group.empty()
     ghost_1 = Ghost(screen_width // 2 - 80, screen_height - 600)
     ghost_2 = Ghost(screen_width // 2, screen_height - 600)
+    ghost_3 = ChasingGhost(screen_width // 2 - 80, screen_height - 680, grid)
     ghost_1.add(ghost_group)
     ghost_2.add(ghost_group)
+    ghost_3.add(ghost_group)
     world_data = []
     if path.exists(f"levels/level{level}_data"):
         pickle_read = open(f"levels/level{level}_data", "rb")
+
         world_data = pickle.load(pickle_read)
         world = World(world_data)
+
     return world
+
+
+
+
+class AStar:
+    def __init__(self, grid):
+        self.grid = grid
+        self.width = len(grid[0])
+        self.height = len(grid)
+        self.directions = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+
+    def heuristic(self, a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    def get_neighbors(self, node):
+        neighbors = []
+        for d in self.directions:
+            neighbor = (node[0] + d[0], node[1] + d[1])
+            if 0 <= neighbor[0] < self.width and 0 <= neighbor[1] < self.height and self.grid[neighbor[1]][neighbor[0]] == 0:
+                neighbors.append(neighbor)
+        return neighbors
+
+    def find_path(self, start, goal):
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        came_from = {}
+        g_score = {start: 0}
+        f_score = {start: self.heuristic(start, goal)}
+
+        while open_set:
+            _, current = heapq.heappop(open_set)
+
+            if current == goal:
+                path = []
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                path.reverse()
+                return path
+
+            for neighbor in self.get_neighbors(current):
+                tentative_g_score = g_score[current] + 1
+
+                if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + self.heuristic(neighbor, goal)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        return []
+
+
+
+
 
 
 class Bloc(pygame.sprite.Sprite):
@@ -187,6 +250,79 @@ class Ghost(pygame.sprite.Sprite):
             self.previous_direction = self.direction
 
 
+class ChasingGhost(pygame.sprite.Sprite):
+    def __init__(self, x, y, grid):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load("sprites\img_ennemi1b_1.webp")
+        self.image = pygame.transform.scale(self.image, (40, 40))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.width, self.height = 40, 40
+        self.direction = (0, 0)
+        self.previous_direction = (0, 0)
+        self.coll_down, self.coll_left, self.coll_right, self.coll_up = False, False, False, False
+        self.dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        self.colls = [self.coll_up, self.coll_right, self.coll_down, self.coll_left]
+        self.grid = grid
+        self.path = []
+        self.astar = AStar(grid)
+        self.target_pos = None
+
+    def update(self):
+        ghost_pos = (self.rect.x // 40, self.rect.y // 40)
+        player_pos = (player.rect.x // 40, player.rect.y // 40)
+
+        if not self.path or ghost_pos == self.target_pos:
+            self.path = self.astar.find_path(ghost_pos, player_pos)
+            self.target_pos = player_pos
+
+        if self.path:
+            next_tile = self.path[0]
+            next_x, next_y = next_tile[0] * 40, next_tile[1] * 40
+
+            if abs(self.rect.x - next_x) <= 2 and abs(self.rect.y - next_y) <= 2:
+                self.path.pop(0)
+
+            dx, dy = 0, 0
+            if self.rect.x < next_x:
+                dx = 2
+            elif self.rect.x > next_x:
+                dx = -2
+            if self.rect.y < next_y:
+                dy = 2
+            elif self.rect.y > next_y:
+                dy = -2
+
+            # Vérifier les collisions avant de déplacer
+            if not self.check_collision(bloc_group, dx, dy):
+                self.rect.x += dx
+                self.rect.y += dy
+
+    def check_collision(self, bloc_group, dx, dy):
+        new_rect = self.rect.copy()
+        new_rect.x += dx
+        new_rect.y += dy
+
+        for bloc in bloc_group:
+            if new_rect.colliderect(bloc.rect):
+                return True
+        return False
+
+    def update_collisions(self, bloc_group):
+        self.coll_up, self.coll_right, self.coll_down, self.coll_left = False, False, False, False
+
+        for bloc in bloc_group:
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x, self.rect.y - 2, self.width, self.height)):
+                self.coll_up = True
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x + 2, self.rect.y, self.width, self.height)):
+                self.coll_right = True
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x, self.rect.y + 2, self.width, self.height)):
+                self.coll_down = True
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x - 2, self.rect.y, self.width, self.height)):
+                self.coll_left = True
+
+
 
 
 class Bouton():
@@ -261,7 +397,7 @@ if path.exists(f"levels/level{level}_data"):
     world_data = pickle.load(pickle_read)
     world = World(world_data)
 
-
+grid = new_grid(world_data)
 
 
 
@@ -352,10 +488,13 @@ bouton_menu = Bouton(screen_width // 2 - 125, screen_height // 2 + 95, 250, 100,
 
 
 ghost_group = pygame.sprite.Group()
+chasingghost_group = pygame.sprite.Group()
 ghost_1 = Ghost(screen_width // 2 - 80, screen_height - 600)
 ghost_2 = Ghost(screen_width // 2, screen_height - 600)
+ghost_3 = ChasingGhost(screen_width // 2 - 80, screen_height - 680, grid)
 ghost_1.add(ghost_group)
 ghost_2.add(ghost_group)
+ghost_3.add(ghost_group)
 
 run=True
 while run==True:
