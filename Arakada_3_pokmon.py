@@ -1,6 +1,6 @@
 import pygame
 import pickle
-from random import randint
+import random
 from os import path
 
 pygame.init()
@@ -44,39 +44,17 @@ clr_brown = (51,0,17)
 img_bouton_restart = pygame.image.load("sprites\img_bouton_restart.webp")
 img_bouton_exit = pygame.image.load("sprites/img_bouton_exit.webp")
 img_bouton_back = pygame.image.load("sprites/img_bouton_back.webp")
-img_bouton_menu = pygame.image.load("sprites/img_bouton_menu.webp")
-img_bouton_menu_pause = pygame.image.load("sprites/img_bouton_menu_pause.webp")
-img_bouton_resume_pause = pygame.image.load("sprites/img_bouton_resume_pause.webp")
 img_bouton_start = pygame.image.load("sprites/img_bouton_start.webp")
-img_bouton_niveaux = pygame.image.load("sprites/img_bouton_niveaux.webp")
-img_cadenas = pygame.image.load("sprites/img_cadenas.webp")
-img_bouton_random_mg = pygame.image.load("sprites/img_bouton_random_mg.webp")
-img_bouton_create = pygame.image.load("sprites/img_bouton_create.webp")
-img_bouton_skins = pygame.image.load("sprites/img_bouton_skins.webp")
 img_bouton_add = pygame.image.load("sprites/img_bouton_add.webp")
 img_bouton_delete = pygame.image.load("sprites/img_bouton_delete.webp")
-#----------------------
-img_background_menu = pygame.image.load("sprites/img_background_menu.webp")
-img_background_menu = pygame.transform.scale(img_background_menu, (screen_width, screen_height))
-img_background_score = pygame.image.load("sprites/img_background_score.webp")
-img_background_mort = pygame.image.load("sprites/img_background_mort.webp")
-img_background_pause = pygame.image.load("sprites/img_background_pause.webp")
-img_background_joueur_1 = pygame.image.load("sprites/img_background_joueur_1.webp")
-img_background_joueur_1 = pygame.transform.scale(img_background_joueur_1, (400, 550))
-img_background_joueur_2 = pygame.image.load("sprites/img_background_joueur_2.webp")
-img_background_joueur_2 = pygame.transform.scale(img_background_joueur_1, (400, 550))
-#--------------------
-img_waiting_screen_1 = pygame.image.load(f"sprites/img_background_waiting_screen_1.webp")
-img_waiting_screen_1 = pygame.transform.scale(img_waiting_screen_1, (screen_width, screen_height))
+img_bouton_menu = pygame.image.load("sprites/img_bouton_menu.webp")
 #--------------------
 img_fleche = pygame.image.load("sprites/img_fleche.webp")
 img_fleche_flip = pygame.transform.flip(img_fleche, True, False)
 img_coin_score = pygame.image.load("sprites\img_coin_score.webp")
 img_coin_price = pygame.image.load("sprites\img_coin.webp")
-img_joueur_select = pygame.image.load("sprites\img_joueur_select.webp")
+img_background_score = pygame.image.load("sprites/img_background_score.webp")
 #sons------------------------------------------------------------------------------
-jump_msc = pygame.mixer.Sound("sounds/jump_msc.wav")
-jump_msc.set_volume(0.7)
 coin_msc = pygame.mixer.Sound("sounds/coin_msc.mp3")
 coin_msc.set_volume(1)
 game_over_msc = pygame.mixer.Sound("sounds/game_over_msc.mp3")
@@ -92,7 +70,8 @@ def draw_grid():
 
 def draw_text(texte, font, couleur, x, y):
     img = font.render(texte, True, couleur)
-    screen.blit(img, (x, y))
+    text_width, text_height = font.size(texte)
+    screen.blit(img, (x - text_width // 2, y - text_height // 2))
 
 
 pickle_in = open(f'data/data_main', 'rb')
@@ -106,6 +85,22 @@ def save():
     pickle.dump(datas, pickle_out)
     pickle_out.close()
     pygame.time.delay(180)
+
+def reset_level(level):
+    player.reset(screen_width // 2, screen_height - 200)
+    ghost_group.empty()
+    coin_group.empty()
+    bloc_group.empty()
+    ghost_1 = Ghost(screen_width // 2 - 80, screen_height - 600)
+    ghost_2 = Ghost(screen_width // 2, screen_height - 600)
+    ghost_1.add(ghost_group)
+    ghost_2.add(ghost_group)
+    world_data = []
+    if path.exists(f"levels/level{level}_data"):
+        pickle_read = open(f"levels/level{level}_data", "rb")
+        world_data = pickle.load(pickle_read)
+        world = World(world_data)
+    return world
 
 
 class Bloc(pygame.sprite.Sprite):
@@ -122,39 +117,40 @@ class Bloc(pygame.sprite.Sprite):
         self.rect.y = y
 
 
+
 class Ghost(pygame.sprite.Sprite):
 
     def __init__(self, x, y):
         pygame.sprite.Sprite.__init__(self)
         self.image = pygame.image.load("sprites\img_ennemi1a_1.webp")
-        self.image = pygame.transform.scale(self.image, (40,40))
+        self.image = pygame.transform.scale(self.image, (40, 40))
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
         self.width, self.height = 40, 40
-        self.direction = (0,1)
+        self.direction = (0, 0)
+        self.previous_direction = (0, 0)
         self.coll_down, self.coll_left, self.coll_right, self.coll_up = False, False, False, False
+        self.dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        self.colls = [self.coll_up, self.coll_right, self.coll_down, self.coll_left]
 
     def update(self):
-        colls = [self.coll_up, self.coll_right, self.coll_down, self.coll_left]
-        dirs = [(0,-1), (1,0), (0,1), (-1,0)]
-        nb_colls = 0
-        for bloc in bloc_group:
+        self.coll_up, self.coll_right, self.coll_down, self.coll_left = False, False, False, False
 
-            if bloc.rect.colliderect(self.rect.x, self.rect.bottom + 15, self.width, self.height):
-                self.coll_down = True
-            if bloc.rect.colliderect(self.rect.right + 15, self.rect.y, self.width, self.height):
-                self.coll_right = True
-            if bloc.rect.colliderect(self.rect.x, self.rect.top - 15, self.width, self.height):
+        # Vérification des collisions
+        for bloc in bloc_group:
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x, self.rect.y - 2, self.width, self.height)):
                 self.coll_up = True
-            if bloc.rect.colliderect(self.rect.left - 15, self.rect.y, self.width, self.height):
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x + 2, self.rect.y, self.width, self.height)):
+                self.coll_right = True
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x, self.rect.y + 2, self.width, self.height)):
+                self.coll_down = True
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x - 2, self.rect.y, self.width, self.height)):
                 self.coll_left = True
-                print(bloc.rect)
-                print(self.rect.x)
-    
-            if bloc.rect.colliderect(self.rect.x, self.rect.y + self.direction[1], self.width, self.height):
+
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x, self.rect.y + self.direction[1], self.width, self.height)):
                 self.direction = (0, 0)
-            if bloc.rect.colliderect(self.rect.x + self.direction[0], self.rect.y, self.width, self.height):
+            if bloc.rect.colliderect(pygame.Rect(self.rect.x + self.direction[0], self.rect.y, self.width, self.height)):
                 self.direction = (0, 0)
 
             if self.rect.x < 560:
@@ -162,24 +158,36 @@ class Ghost(pygame.sprite.Sprite):
             if self.rect.x > 1280:
                 self.rect.x = 560
 
-        for coll in colls:
-            if coll:
-                nb_colls += 1
+        # Mise à jour des directions possibles
+        self.dirs_temp = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        self.colls = [self.coll_up, self.coll_right, self.coll_down, self.coll_left]
 
-        print(nb_colls)
-        print(colls)
-        if nb_colls <= 2 or (nb_colls == 2 and self.direction == (0,0)):
-            index = randint(1, 4 - nb_colls)
-            if not colls[index - 1]:
-                self.direction = dirs[index - 1]
+        nb_colls = sum(self.colls)
+
+        # Filtrer les directions possibles en excluant la direction opposée à la précédente
+        self.dirs_temp = [d for d, coll in zip(self.dirs, self.colls) if not coll and d != (-self.previous_direction[0], -self.previous_direction[1])]
+
+        if nb_colls <= 1 or (nb_colls == 2 and self.direction == (0, 0)): 
+            if self.dirs_temp:
+                index = random.randint(0, len(self.dirs_temp) - 1)
+                self.direction = self.dirs_temp[index]
+
+        if nb_colls == 3 and self.direction == (0, 0):
+            if self.coll_left:
+                self.direction = (1, 0)
             else:
-                self.direction = dirs[index]
-    
-            nb_colls = 0
+                self.direction = (-1, 0)
 
-        print(self.direction)
+        # Mettre à jour la position
         self.rect.x += self.direction[0] * 2
         self.rect.y += self.direction[1] * 2
+
+        # Mettre à jour la direction précédente
+        if self.direction != (0, 0):
+            self.previous_direction = self.direction
+
+
+
 
 class Bouton():
 
@@ -305,17 +313,25 @@ class Joueur():
                 self.dy = speed
                 self.dx = 0
 
+            if self.rect.x < 560:
+                self.rect.x = 1280
+            if self.rect.x > 1280:
+                self.rect.x = 560
+
             self.rect.x += self.dx
             self.rect.y += self.dy  
 
         screen.blit(self.image, self.rect)
+
+        if pygame.sprite.spritecollide(self, ghost_group, False):
+            game_over= -1
 
         return game_over
     
     
     def reset(self, x, y):
 
-        self.image = pygame.image.load(f"sprites\img_joueur_1_0.webp")
+        self.image = pygame.image.load(f"sprites\img_joueur.webp")
         self.image = pygame.transform.scale(self.image, (39,39))
         self.rect = self.image.get_rect()
         self.rect.x = x
@@ -330,15 +346,16 @@ player = Joueur(screen_width // 2, screen_height - 200)
 
 
 bouton_exit = Bouton(screen_width - 105, 15, 90, 50, img_bouton_exit)
-bouton_resume_pause = Bouton(screen_width // 2 - 350, screen_height // 2 - 40, 312, 142, img_bouton_resume_pause)
-bouton_menu_pause = Bouton(screen_width // 2 + 50, screen_height // 2 - 40, 312, 142, img_bouton_menu_pause)
-bouton_start = Bouton(screen_width // 2 + 95, screen_height // 2 - 45, 260, 100, img_bouton_start)
+bouton_start = Bouton(screen_width // 2 - 125, screen_height // 2, 260, 100, img_bouton_start)
+bouton_restart = Bouton(screen_width // 2 - 125, screen_height // 2 - 45, 250, 100, img_bouton_restart)
+bouton_menu = Bouton(screen_width // 2 - 125, screen_height // 2 + 95, 250, 100, img_bouton_menu)
 
-ghost_1 = Ghost(screen_width // 2 - 100, screen_height // 2 + 100)
 
 ghost_group = pygame.sprite.Group()
-
+ghost_1 = Ghost(screen_width // 2 - 80, screen_height - 600)
+ghost_2 = Ghost(screen_width // 2, screen_height - 600)
 ghost_1.add(ghost_group)
+ghost_2.add(ghost_group)
 
 run=True
 while run==True:
@@ -352,15 +369,19 @@ while run==True:
     key = pygame.key.get_pressed()
 
     if menu_principal == True:
-        screen.fill((100,255,100))
-        draw_text('Arakada 3', font_lilitaone_50, clr_black, screen_width // 2 - 415, screen_height // 2 - 160)   
+
+        screen.fill((120,100,100))
+        draw_text('Arakada 3', font_lilitaone_50, clr_black, screen_width // 2, screen_height // 2 - 160)   
 
         if bouton_start.draw(1):
             menu_principal = False 
+        if bouton_exit.draw(1):
+            run = False
 
     else:
 
         world.draw()
+
 
         if game_over == 0:
             screen.fill((50,50,255))
@@ -382,6 +403,22 @@ while run==True:
             screen.blit(img_coin_score, (327,85))
             draw_text("helo", font_bauhaus_50, clr_black, 90, 85)
             draw_text('x ' + str(score), font_bauhaus_50, clr_black, 370, 85)
+
+        if game_over == -1:
+            if bouton_restart.draw(1) or key[pygame.K_RETURN]:
+                pygame.time.delay(30)
+                world_data = []
+                world = reset_level(level)
+                game_over = 0
+            if bouton_menu.draw(1):
+                pygame.time.delay(45)
+                menu_principal = True
+                game_over = 0
+                world = reset_level(level)
+                level = 1
+
+        if bouton_exit.draw(1):
+            run = False
 
         #draw_grid()
 
