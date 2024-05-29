@@ -1,7 +1,6 @@
 import pygame
 import pickle
 import random
-import heapq
 from os import path
 
 pygame.init()
@@ -12,7 +11,6 @@ fps = 60
 tile_size = 40
 screen_width, screen_height = pygame.display.Info().current_w, pygame.display.Info().current_h
 screen_size = (screen_width, screen_height) 
-print(screen_size)
 screen= pygame.display.set_mode((0,0),pygame.FULLSCREEN)
 
 menu_principal = True
@@ -21,14 +19,6 @@ level = 1
 game_over = 0
 score = 0
 walls_pos = []
-
-
-# GS MEANS Grid-Start
-GS_X = 560
-GS_Y = 120
-# GE MEANS Grid-End
-GE_X = 1320
-GE_Y = 960
 
 #load de trucs--------------------------------------------------------------------------------------
 
@@ -129,137 +119,76 @@ class Node:
 
 
 class AStar(pygame.sprite.Sprite):
-    def __init__(self, app, start_node_x, start_node_y, end_node_x, end_node_y, wall_pos):
+    def __init__(self, start_x, start_y, finish_x, finish_y, wall_pos):
         pygame.sprite.Sprite.__init__(self)
-        self.app = app
-        self.start_node_x = start_node_x
-        self.start_node_y = start_node_y
-        self.end_node_x = end_node_x
-        self.end_node_y = end_node_y
+        self.start_x = start_x
+        self.start_y = start_y
+        self.finish_x = finish_x
+        self.finish_y = finish_y
         self.open_list = []
         self.closed_list = []
         self.wall_pos = wall_pos
         self.route = []
         self.route_found = False
 
-    def draw_all_paths(self, current):
-        i, j = current
-
-        ##### Draw each node the computer is visiting as it is searching SIMULTNEOUSLY
-        pygame.draw.rect(screen, (0,0,0), (i * 40 + 240, j * 40, 40, 40), 0)
-
-        ##### Redraw start/end nodes on top of all routes
-        pygame.draw.rect(screen, (0,0,0), (240 + self.start_node_x * 40, self.start_node_y * 40, 40, 40), 0)
-        pygame.draw.rect(screen, (0,0,0), (240 + self.end_node_x * 40, self.end_node_y * 40, 40, 40), 0)
-
-        # Redraw grid (for aesthetic purposes lol)
-        for x in range(20):
-            pygame.draw.line(screen, (0,0,0), (GS_X + x * 40, GS_Y), (GS_X + x * 40, GE_Y))
-        for y in range(22):
-            pygame.draw.line(screen, (0,0,0), (GS_X, GS_Y + y * 40), (GE_X, GS_Y + y * 40))
-
-        pygame.display.update()
+        print(wall_pos, "WALLLLLLLLLLL")
+        print()
 
     def generate_children(self, parent, end_node):
         parent_pos = parent.position
-        for m in [(-1, 0), (1, 0), (0, 1), (0, -1), (-1, 1), (1, 1), (1, -1), (-1, -1)]:
+        for m in [(-1, 0), (1, 0), (0, 1), (0, -1)]:
             child_pos = (parent_pos[0] + m[0], parent_pos[1] + m[1])
             if self.check_valid(child_pos):
                 child = Node(child_pos, parent)
-                self.G_calc(child, parent, m)
                 self.H_calc(child, end_node)
-                self.F_calc(child)
+                self.F_calc(child, parent)
 
-                # If node not already added to the open list AND node isn't cutting corners around wall, then append
-                if self.append_to_open(child) and self.check_wall_corner(m, parent_pos):
+                if self.append_to_open(child):
                     self.open_list.append(child)
 
     def append_to_open(self, child):
         for open_node in self.open_list:
-
-            # If node is already in open list and the new node has a higher F-score than node about to be replaced,
-            # return False
-            # IMPOR(0,0,0)T NOTE: Even if another node with same position with different F value gets added, the node with
-            # higher F-score will never be checked, so it's fine to have two nodes with same position.
             if child.position == open_node.position and child.F >= open_node.F:
                 return False
         return True
 
-    def check_wall_corner(self, move, parent_pos):
-        if move == (-1, 1) or move == (1, 1) or move == (1, -1) or move == (-1, -1):
-            i,j = parent_pos
-            (m,n) = move
-            # (x, y) = Orthogonal
-            if move == (1,1):
-                (x,y) = (0,1)
-                (a,b) = (1,0)
-            elif move == (1,-1):
-                (x,y) = (1,0)
-                (a, b) = (0,-1)
-            elif move == (-1,-1):
-                (x,y) = (0,-1)
-                (a, b) = (-1,0)
-            else:
-                (x,y) = (-1,0)
-                (a, b) = (0,1)
-
-            # If cutting corner case, return False
-            if (i+x, j+y) in self.wall_pos or (i+a, i+b) in self. wall_pos and (i+m, j+n) not in self.wall_pos:
-                return False
-            return True
-        else:
-            return True
-
-    def G_calc(self, child, parent, m):
-        # Determine if move is orthogonal or diagonal
-        sum_difference = abs(sum(m))
-        # Add G-Score according to the type of move
-        if sum_difference == 1:
-            child.G = parent.G + 10
-        elif sum_difference == 0 or sum_difference == 2:
-            child.G = parent.G + 14
-
     def H_calc(self, child, end_node):
         child.H = ((child.position[0] - end_node.position[0]) ** 2) + ((child.position[1] - end_node.position[1]) ** 2)
 
-    def F_calc(self, child):
-        child.F = child.G + child.H
+    def F_calc(self, child, parent):
+        child.F = parent.G + 10 + child.H
 
     def check_valid(self, move):
-        if move not in self.wall_pos and move not in self.closed_list:
+        grid_x, grid_y = move
+        if (grid_x, grid_y) not in self.wall_pos and (grid_x, grid_y) not in self.closed_list:
             return True
         return False
 
     def findEnd(self, current):
-        if current == (self.end_node_x, self.end_node_y):
+        if current == (self.finish_x, self.finish_y):
             return True
         return False
 
     def astar_execute(self):
-        # Initialize Start/End Nodes
-        start_node = Node((self.start_node_x, self.start_node_y), None)
+        # Initialize the nodes
+        start_node = Node((self.start_x, self.start_y), None)
         start_node.G = start_node.H = start_node.F = 0
-        end_node = Node((self.end_node_x, self.end_node_y), None)
+        end_node = Node((self.finish_x, self.finish_y), None)
         end_node.G = end_node.H = end_node.F = 0
 
         self.open_list.append(start_node)
-
-        print(start_node.position, "start")
-        print(end_node.position, "end")
-        print(player.rect)
-        print()
 
         while len(self.open_list) > 0:
             current_node = self.open_list[0]
             current_index = 0
 
-            # Get the node with lowest F-Cost
+            # get the lowest "F" node
             for index, node in enumerate(self.open_list):
                 if node.F < current_node.F:
                     current_node = node
                     current_index = index
 
-            # Check if route has been found
+            # check if we find a route
             if self.findEnd(current_node.position):
                 current = current_node
                 # Append path until the current node becomes none (start node has a parent of None)
@@ -271,21 +200,35 @@ class AStar(pygame.sprite.Sprite):
                 break
 
             self.generate_children(current_node, end_node)
-            self.draw_all_paths(current_node.position)
-
             self.open_list.pop(current_index)
             self.closed_list.append(current_node.position)
 
+        if self.route_found:
+            try:
+                self.route.insert(0, (self.finish_x, self.finish_y))
+                self.route.pop(len(self.route) - 1)
+                print(self.route, "rouuuuuuuuuuuuute")
+                print()
+                
+                
+                next_pos = self.route[len(self.route) - 1]
+                dx = next_pos[0] - self.start_x
+                dy = next_pos[1] - self.start_y
+                return (dx, dy)
+            except:
+                return (0,0)
+        else:
+            return (0,0)
 
-def execute_search_algorithm(self, start_node_x, start_node_y, end_node_x, end_node_y, wall_pos):
 
-    astar = AStar(self, start_node_x, start_node_y, end_node_x, end_node_y, wall_pos)
-
-    if start_node_x or end_node_x is not None:
-        astar.astar_execute()
-
+def execute_search_algorithm(start_node_x, start_node_y, finish_x, end_node_y, wall_pos):
+    astar = AStar(start_node_x, start_node_y, finish_x, end_node_y, wall_pos)
+    if start_node_x or finish_x is not None:
+        return astar.astar_execute()
     else:
-        draw_text('NO ROUTE FOUND!', screen, [768, 384], 50, (0,0,0), font_bauhaus_40)
+        draw_text('NO ROUTE FOUND!', font_bauhaus_40, (0, 0, 0), 768, 384)
+        return (0, 0)
+
 
 
 
@@ -339,10 +282,10 @@ class Ghost(pygame.sprite.Sprite):
             if bloc.rect.colliderect(pygame.Rect(self.rect.x + self.direction[0], self.rect.y, self.width, self.height)):
                 self.direction = (0, 0)
 
-            if self.rect.x < 560:
-                self.rect.x = 1280
-            if self.rect.x > 1280:
-                self.rect.x = 560
+        if self.rect.x < 560:
+            self.rect.x = 1280
+        if self.rect.x > 1280:
+            self.rect.x = 560
 
         # Mise à jour des directions possibles
         self.dirs_temp = [(0, -1), (1, 0), (0, 1), (-1, 0)]
@@ -372,6 +315,42 @@ class Ghost(pygame.sprite.Sprite):
         if self.direction != (0, 0):
             self.previous_direction = self.direction
 
+class Chasingghost(pygame.sprite.Sprite):
+
+    def __init__(self, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load("sprites\img_ennemi1b_1.webp")
+        self.image = pygame.transform.scale(self.image, (40, 40))
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.width, self.height = 40, 40
+        self.direction = (0, 0)
+        self.coll_down, self.coll_left, self.coll_right, self.coll_up = False, False, False, False
+        self.dirs = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+        self.colls = [self.coll_up, self.coll_right, self.coll_down, self.coll_left]
+        self.previous_direction = (0, 0)
+        self.counter = 0
+
+    def update(self):
+        print(self.rect.y, self.rect.y // 40, "feur")
+        if not self.counter >= 19:
+            self.direction = self.previous_direction
+            self.counter += 1
+        else:
+            self.direction = execute_search_algorithm(self.rect.x // 40, self.rect.y // 40, player.rect.x // 40, player.rect.y // 40, walls_pos)
+            self.counter = 0
+
+        print(self.rect.x // 40, self.rect.y // 40, "cosssss")
+        print()
+        print(self.direction, "directionnnnnnnn")
+        print()
+        # Mettre à jour la position
+        self.rect.x += self.direction[0] * 2
+        self.rect.y += self.direction[1] * 2
+
+        if self.direction != (0, 0):
+            self.previous_direction = self.direction
 
 
 
@@ -431,11 +410,11 @@ class World():
             col_count = 14
             for tile in row:
                 if tile == 1:
-                    dirt = Bloc(col_count * tile_size, row_count * tile_size)
+                    dirt = Bloc((col_count) * tile_size, (row_count) * tile_size)
                     bloc_group.add(dirt)
-                    walls_pos.append((col_count * tile_size, row_count * tile_size))
+                    walls_pos.append((col_count, row_count))
                 if tile == 9:
-                    coin = Coin(col_count * tile_size + (tile_size // 2), row_count * tile_size + (tile_size // 2))
+                    coin = Coin((col_count) * tile_size + (tile_size // 2), (row_count) * tile_size + (tile_size // 2))
                     coin_group.add(coin)
                 col_count += 1
             row_count += 1
@@ -450,17 +429,6 @@ if path.exists(f"levels/level{level}_data"):
     world = World(world_data)
 
 grid = new_grid(world_data)
-
-
-
-
-class Search():
-    def __init__(self):
-        pass
-    def search(self):
-        execute_search_algorithm(self, ghost_3.rect.x, ghost_3.rect.y, player.rect.x, player.rect.y, walls_pos)
-
-
 
 
 
@@ -546,12 +514,11 @@ ghost_group = pygame.sprite.Group()
 chasingghost_group = pygame.sprite.Group()
 ghost_1 = Ghost(screen_width // 2 - 80, screen_height - 600)
 ghost_2 = Ghost(screen_width // 2, screen_height - 600)
-ghost_3 = Ghost(screen_width // 2, screen_height - 600)
+ghost_3 = Chasingghost(screen_width // 2 - 80, screen_height - 600)
 ghost_1.add(ghost_group)
 ghost_2.add(ghost_group)
 ghost_3.add(ghost_group)
 
-search = Search()
 
 
 run=True
@@ -589,7 +556,6 @@ while run==True:
             game_over = player.update(game_over)
             ghost_group.update()
 
-            search.search()
 
             if pygame.sprite.spritecollide(player, coin_group, True):
                 coin_msc.play()
@@ -619,10 +585,7 @@ while run==True:
         if bouton_exit.draw(1):
             run = False
 
-        #draw_grid()
 
     pygame.display.update()
-
-
 
 pygame.quit()
